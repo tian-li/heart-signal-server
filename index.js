@@ -209,7 +209,7 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 }
 
 
-server.listen(80, () => {
+server.listen(8080, () => {
     // console.log(`Example app listening at http://localhost:${3000}`);
 });
 
