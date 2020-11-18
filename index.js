@@ -10,7 +10,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.all('*', function(req, res, next) {
     // Just send the index.html for other files to support HTML5Mode
-    res.sendFile('index.html', { root: __dirname });
+    res.sendFile(path.resolve(__dirname, 'index.html'));
 });
 
 // roomNumber as key, user array as value
