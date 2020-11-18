@@ -195,7 +195,6 @@ function emitError(message, socket, target) {
     }
 }
 
-
 async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
     roomUsersMap[roomNumber].push({username, userRole, roomNumber, id: socket.id});
 
@@ -208,9 +207,10 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 
     // console.log('previousMessages', previousMessages)
 
-    io.to(socket.id).emit('listPreviousMessages', {messages: publishedMessages})
+    if(userRole !== 'player') {
+        io.to(socket.id).emit('listPreviousMessages', {messages: publishedMessages})
+    }
 }
-
 
 server.listen(port, () => {
     // console.log(`Example app listening at http://localhost:${3000}`);
