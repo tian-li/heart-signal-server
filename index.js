@@ -8,6 +8,11 @@ const port = process.env.PORT || 443;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.all('/*', function(req, res, next) {
+    // Just send the index.html for other files to support HTML5Mode
+    res.sendFile('index.html', { root: __dirname });
+});
+
 // roomNumber as key, user array as value
 const roomUsersMap = {};
 
