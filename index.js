@@ -4,6 +4,8 @@ const path = require('path');
 const server = require('http').createServer(app);
 const io = require('socket.io')(server, {});
 
+const port = process.env.PORT || 443;
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // roomNumber as key, user array as value
@@ -17,16 +19,6 @@ const roomInfo = {}
 
 // roomNumber as key, player message map as value. In playerMessage map, message id as key, message as value
 const roomPlayerMessages = {};
-
-function attemptToJoinAsPlayer({id, username, userRole, roomNumber},socket) {
-    const host = roomHosts[roomNumber];
-
-    io.to(host.id).emit('attemptToJoinAsPlayer', {id, username, userRole, roomNumber});
-}
-
-io.on('reconnect', (socket) => {
-    // console.log('reconnect', socket);
-})
 
 io.on('connection', (socket) => {
     // console.log('a user connected');
@@ -168,6 +160,12 @@ io.on('connection', (socket) => {
     });
 });
 
+function attemptToJoinAsPlayer({id, username, userRole, roomNumber},socket) {
+    const host = roomHosts[roomNumber];
+
+    io.to(host.id).emit('attemptToJoinAsPlayer', {id, username, userRole, roomNumber});
+}
+
 function sendMessageToTargetPlayer(roomNumber, messagesToPublish) {
     messagesToPublish.forEach((message) => {
         const targetUser = roomUsersMap[roomNumber].find(user => user.id === message.toId);
@@ -209,23 +207,6 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 }
 
 
-server.listen(443, () => {
+server.listen(port, () => {
     // console.log(`Example app listening at http://localhost:${3000}`);
 });
-
-//
-// const options = { /* ... */ };
-// const io = require('socket.io')(options);
-//
-// io.on('connection', socket => { /* ... */ });
-//
-// io.listen(3000);
-
-// const app = require('express')();
-// const server = require('http').createServer(app);
-// const options = { /* ... */ };
-// const io = require('socket.io')(server, options);
-//
-// io.on('connection', socket => { /* ... */ });
-//
-// server.listen(3000);
