@@ -8,7 +8,7 @@ const port = process.env.PORT || 443;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.all('/*', function(req, res, next) {
+app.all('*', function(req, res, next) {
     // Just send the index.html for other files to support HTML5Mode
     res.sendFile('index.html', { root: __dirname });
 });
@@ -38,24 +38,24 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('attemptToJoinAsPlayer', ({id,
+    socket.on('attemptToJoin', ({id,
         username,
         userRole,
         roomNumber,}) => {
         if (!roomUsersMap[roomNumber]) {
             emitError('房间号不存在', socket);
         } else {
-            attemptToJoinAsPlayer({id, username, userRole, roomNumber}, socket)
+            attemptToJoin({id, username, userRole, roomNumber}, socket)
         }
     });
 
-    socket.on('approveAttemptToJoinAsPlayer', ({user, roomNumber}) => {
-       io.to(user.id).emit('approveAttemptToJoinAsPlayer', user);
+    socket.on('approveAttemptToJoin', ({user, roomNumber}) => {
+       io.to(user.id).emit('approveAttemptToJoin', user);
     });
 
-    socket.on('disapproveAttemptToJoinAsPlayer', ({user, roomNumber}) => {
+    socket.on('disapproveAttemptToJoin', ({user, roomNumber}) => {
         emitError('未通过', socket, user.id)
-       // io.to(user.id).emit('disapproveAttemptToJoinAsPlayer', user);
+       // io.to(user.id).emit('disapproveAttemptToJoin', user);
     });
 
     socket.on('join', async ({username, userRole, roomNumber}) => {
@@ -165,10 +165,10 @@ io.on('connection', (socket) => {
     });
 });
 
-function attemptToJoinAsPlayer({id, username, userRole, roomNumber},socket) {
+function attemptToJoin({id, username, userRole, roomNumber},socket) {
     const host = roomHosts[roomNumber];
 
-    io.to(host.id).emit('attemptToJoinAsPlayer', {id, username, userRole, roomNumber});
+    io.to(host.id).emit('attemptToJoin', {id, username, userRole, roomNumber});
 }
 
 function sendMessageToTargetPlayer(roomNumber, messagesToPublish) {
