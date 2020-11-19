@@ -68,14 +68,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('joinAsPlayerSuccess', async ({username, userRole, roomNumber}) => {
-        socket.userRole = userRole;
-        socket.roomNumber = roomNumber;
-        await onJoinRoomSuccess({username, userRole, roomNumber}, socket);
-        io.to(roomNumber).emit('broadcast', {type: 'message', message: `${username}加入了`});
-        io.to(roomNumber).emit('newUserJoined', {username, userRole, roomNumber, id: socket.id});
-    });
-
     socket.on('create', async ({username, roomNumber}) => {
         if (roomUsersMap[roomNumber]) {
             emitError('房间号已经在', socket);
