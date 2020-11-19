@@ -32,42 +32,21 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnecting', (payload) => {
-        // console.log('user disconnected', payload);
-        // console.log('socket.roomNumber', socket.roomNumber);
-        // console.log('socket.userName', socket.userName);
-        // console.log('socket.userRole', socket.userRole);
-
         if (socket.userRole === 'host') {
-            // console.log('before delete roomUsersMap', roomUsersMap)
-            // console.log('before delete roomPlayerMessages', roomPlayerMessages)
-            // console.log('before delete roomHosts', roomHosts)
-            // console.log('before delete roomInfo', roomInfo)
-
             delete roomUsersMap[socket.roomNumber];
             delete roomPlayerMessages[socket.roomNumber];
             delete roomHosts[socket.roomNumber];
             delete roomInfo[socket.roomNumber];
-
-            // console.log('after delete roomUsersMap', roomUsersMap)
-            // console.log('after delete roomPlayerMessages', roomPlayerMessages)
-            // console.log('after delete roomHosts', roomHosts)
-            // console.log('after delete roomInfo', roomInfo)
         } else {
             const socketId = socket.id;
 
-            if(!!roomUsersMap[socket.roomNumber]) {
+            if (!!roomUsersMap[socket.roomNumber]) {
                 roomUsersMap[socket.roomNumber] = roomUsersMap[socket.roomNumber].filter(u => u.id !== socketId);
             }
-
         }
     });
 
-    socket.on('attemptToJoin', ({
-                                    id,
-                                    username,
-                                    userRole,
-                                    roomNumber,
-                                }) => {
+    socket.on('attemptToJoin', ({id, username, userRole, roomNumber,}) => {
         if (!roomUsersMap[roomNumber]) {
             emitAlert('房间号不存在', socket);
         } else {
@@ -80,7 +59,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disapproveAttemptToJoin', ({user, roomNumber}) => {
-        // emitAlert('未通过', socket, user.id)
         io.to(user.id).emit('disapproveAttemptToJoin');
     });
 
@@ -120,7 +98,6 @@ io.on('connection', (socket) => {
         }
     });
 
-
     // 主持人开启新一轮短信
     socket.on('startNewRound', ({roomNumber}) => {
 
@@ -145,18 +122,13 @@ io.on('connection', (socket) => {
             roomPlayerMessages[roomNumber] = {};
         }
         roomPlayerMessages[roomNumber][message.id] = message;
-        // console.log('roomNumber', roomNumber);
-        // console.log('message', message);
-        // console.log('roomHosts', roomHosts);
         io.to(roomHosts[roomNumber].id).emit('playerMessage', message);
-        // socket.emit(playerMessage, message)
     });
 
     // 主持人审核短信之后，暂存，之后一次性公布
     socket.on('playerMessageApprovedByHost', ({roomNumber, message}) => {
         roomPlayerMessages[roomNumber][message.id] = message;
 
-        // console.log('roomPlayerMessages in room', roomPlayerMessages[roomNumber]);
         io.to(message.fromName).emit('playerMessageApprovedByHost', message);
     });
 
@@ -220,6 +192,10 @@ function emitAlert(message, socket, target) {
 }
 
 function broadcastUsersInRoom({roomNumber}, socket) {
+
+    const usersInRoom = roomUsersMap[roomNumber];
+    console.log('usersInRoom', usersInRoom)
+
     io.to(roomNumber).emit('listUserInRoom', {roomNumber, users: roomUsersMap[roomNumber]});
 }
 
@@ -231,7 +207,10 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 
     const previousMessages = roomPlayerMessages[roomNumber];
 
-    socket.emit('joinSuccess', ({user: {username, userRole, roomNumber, id: socket.id}, roomInfo: roomInfo[roomNumber]}))
+    socket.emit('joinSuccess', ({
+        user: {username, userRole, roomNumber, id: socket.id},
+        roomInfo: roomInfo[roomNumber]
+    }))
 
     if (userRole !== 'player') {
         const publishedMessages = Object.values(previousMessages).filter(m => m.published);
@@ -246,5 +225,5 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 }
 
 server.listen(port, () => {
-    // console.log(`Example app listening at http://localhost:${3000}`);
+    console.log(`Example app listening at http://localhost:${port}`);
 });
