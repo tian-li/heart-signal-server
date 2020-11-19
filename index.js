@@ -4,13 +4,12 @@ const path = require('path');
 const server = require('http').createServer(app);
 const io = require('socket.io')(server, {});
 
-const port = process.env.PORT || 443;
+const port = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.all('*', function(req, res, next) {
-    // Just send the index.html for other files to support HTML5Mode
-    res.sendFile('public/index.html', { root: __dirname });
+app.all('*', (req, res, next) => {
+    res.sendFile('public/index.html', {root: __dirname});
 });
 
 // roomNumber as key, user array as value
@@ -38,29 +37,31 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('attemptToJoin', ({id,
-        username,
-        userRole,
-        roomNumber,}) => {
+    socket.on('attemptToJoin', ({
+                                    id,
+                                    username,
+                                    userRole,
+                                    roomNumber,
+                                }) => {
         if (!roomUsersMap[roomNumber]) {
-            emitError('房间号不存在', socket);
+            emitAlert('房间号不存在', socket);
         } else {
             attemptToJoin({id, username, userRole, roomNumber}, socket)
         }
     });
 
     socket.on('approveAttemptToJoin', ({user, roomNumber}) => {
-       io.to(user.id).emit('approveAttemptToJoin', user);
+        io.to(user.id).emit('approveAttemptToJoin', user);
     });
 
     socket.on('disapproveAttemptToJoin', ({user, roomNumber}) => {
-        emitError('未通过', socket, user.id)
-       // io.to(user.id).emit('disapproveAttemptToJoin', user);
+        emitAlert('未通过', socket, user.id)
+        // io.to(user.id).emit('disapproveAttemptToJoin', user);
     });
 
     socket.on('join', async ({username, userRole, roomNumber}) => {
         if (!roomUsersMap[roomNumber]) {
-            emitError('房间号不存在', socket);
+            emitAlert('房间号不存在', socket);
         } else {
             await onJoinRoomSuccess({username, userRole, roomNumber}, socket);
             io.to(roomNumber).emit('broadcast', {type: 'message', message: `${username}加入了`});
@@ -70,7 +71,7 @@ io.on('connection', (socket) => {
 
     socket.on('create', async ({username, roomNumber}) => {
         if (roomUsersMap[roomNumber]) {
-            emitError('房间号已经在', socket);
+            emitAlert('房间号已经在', socket);
         } else {
             const userRole = 'host';
 
@@ -148,16 +149,15 @@ io.on('connection', (socket) => {
 
                 messagesInRoom[messageId] = updatedMessage;
             }
-
         });
-
 
         sendMessageToTargetPlayer(roomNumber, messagesToPublish);
         sendMessagesToObservers(roomNumber, messagesToPublish);
+        emitAlert('公布消息成功', socket);
     });
 });
 
-function attemptToJoin({id, username, userRole, roomNumber},socket) {
+function attemptToJoin({id, username, userRole, roomNumber}, socket) {
     const host = roomHosts[roomNumber];
 
     io.to(host.id).emit('attemptToJoin', {id, username, userRole, roomNumber});
@@ -168,7 +168,6 @@ function sendMessageToTargetPlayer(roomNumber, messagesToPublish) {
         const targetUser = roomUsersMap[roomNumber].find(user => user.id === message.toId);
         io.to(targetUser.id).emit('publishPendingMessages', [message]);
     });
-
 }
 
 function sendMessagesToObservers(roomNumber, messagesToPublish) {
@@ -179,11 +178,11 @@ function sendMessagesToObservers(roomNumber, messagesToPublish) {
     });
 }
 
-function emitError(message, socket, target) {
-    if(!!target) {
-        io.to(target).emit('error', {message})
+function emitAlert(message, socket, target) {
+    if (!!target) {
+        io.to(target).emit('alert', {message})
     } else {
-        socket.emit('error', {message});
+        socket.emit('alert', {message});
     }
 }
 
@@ -197,9 +196,7 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 
     const publishedMessages = Object.values(previousMessages).filter(m => m.published);
 
-    // console.log('previousMessages', previousMessages)
-
-    if(userRole !== 'player') {
+    if (userRole !== 'player') {
         io.to(socket.id).emit('listPreviousMessages', {messages: publishedMessages})
     }
 }
