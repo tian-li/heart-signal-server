@@ -1,1 +1,1 @@
-web: PORT=443 node index.js
+web: node index.js
