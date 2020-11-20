@@ -4,13 +4,13 @@ const path = require('path');
 const server = require('http').createServer(app);
 const io = require('socket.io')(server, {});
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 443;
 
-// app.use(express.static(path.join(__dirname, 'public')));
-//
-// app.all('*', (req, res, next) => {
-//     res.sendFile('public/index.html', {root: __dirname});
-// });
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.all('*', (req, res, next) => {
+    res.sendFile('public/index.html', {root: __dirname});
+});
 
 // roomNumber as key, user array as value
 const roomUsersMap = {};
