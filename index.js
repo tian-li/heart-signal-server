@@ -4,13 +4,13 @@ const path = require('path');
 const server = require('http').createServer(app);
 const io = require('socket.io')(server, {});
 
-const port = process.env.PORT || 443;
+const port = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.all('*', (req, res, next) => {
-    res.sendFile('public/index.html', {root: __dirname});
-});
+// app.use(express.static(path.join(__dirname, 'public')));
+//
+// app.all('*', (req, res, next) => {
+//     res.sendFile('public/index.html', {root: __dirname});
+// });
 
 // roomNumber as key, user array as value
 const roomUsersMap = {};
@@ -24,9 +24,9 @@ const roomInfo = {}
 // roomNumber as key, player message map as value. In playerMessage map, message id as key, message as value
 const roomPlayerMessages = {};
 
-io.on('connection', (socket) => {
-    // console.log('a user connected');
+const userStatusBeforeDisconnect = {};
 
+io.on('connection', (socket) => {
     socket.on('sendAlert', ({message}) => {
         emitAlert(message, socket, socket.roomNumber)
     });
@@ -37,12 +37,32 @@ io.on('connection', (socket) => {
             delete roomPlayerMessages[socket.roomNumber];
             delete roomHosts[socket.roomNumber];
             delete roomInfo[socket.roomNumber];
-        } else {
-            const socketId = socket.id;
+            delete userStatusBeforeDisconnect[socket.roomNumber];
+        } else if(socket.userRole === 'player' || socket.userRole === 'observer') {
+
+            // 如果房价已经不存在，不做任何操作
+            if(!roomUsersMap[socket.roomNumber]) {
+                return;
+            }
+
+            const user = roomUsersMap[socket.roomNumber].find(u => u.username === socket.username);
+
+            userStatusBeforeDisconnect[socket.roomNumber][socket.username] = {
+                username: user.username,
+                userRole: user.userRole,
+                roomNumber: user.roomNumber,
+                messageStatus: user.messageStatus,
+            }
 
             if (!!roomUsersMap[socket.roomNumber]) {
-                roomUsersMap[socket.roomNumber] = roomUsersMap[socket.roomNumber].filter(u => u.id !== socketId);
+                roomUsersMap[socket.roomNumber].forEach(u => {
+                    if(u.username === socket.username) {
+                        u.connected = false;
+                    }
+                })
             }
+
+            broadcastUsersInRoom({roomNumber: socket.roomNumber});
         }
     });
 
@@ -67,9 +87,7 @@ io.on('connection', (socket) => {
             emitAlert('房间号不存在', socket);
         } else {
             await onJoinRoomSuccess({username, userRole, roomNumber}, socket);
-            socket.userRole = userRole;
-            socket.roomNumber = roomNumber;
-            broadcastUsersInRoom({roomNumber}, socket);
+            broadcastUsersInRoom({roomNumber});
             io.to(roomNumber).emit('broadcast', {type: 'message', message: `${username}加入了`});
             io.to(roomNumber).emit('newUserJoined', {username, userRole, roomNumber, id: socket.id});
         }
@@ -88,12 +106,10 @@ io.on('connection', (socket) => {
                 roundIndex: 0,
                 isSendingMessage: false,
             };
-
-            socket.userRole = userRole;
-            socket.roomNumber = roomNumber;
+            userStatusBeforeDisconnect[roomNumber] = {};
 
             await onJoinRoomSuccess({username, userRole, roomNumber}, socket);
-            broadcastUsersInRoom({roomNumber}, socket);
+            broadcastUsersInRoom({roomNumber});
             io.to(roomNumber).emit('broadcast', {type: 'message', message: `${username}创建了房间${roomNumber}`});
         }
     });
@@ -108,11 +124,28 @@ io.on('connection', (socket) => {
             isSendingMessage: true,
         };
 
+        roomUsersMap[roomNumber].forEach((u) => {
+            if(u.userRole === 'player') {
+                u.messageStatus = 'waiting';
+            }
+        });
+
+        broadcastUsersInRoom({roomNumber});
+
         io.to(roomNumber).emit('startNewRound', roundIndex);
     });
 
     socket.on('endCurrentRound', ({roomNumber}) => {
         roomInfo[roomNumber].isSendingMessage = false;
+
+        roomUsersMap[roomNumber].forEach((u) => {
+            if(u.userRole === 'player') {
+                u.messageStatus = 'notStarted';
+            }
+        });
+
+        broadcastUsersInRoom({roomNumber});
+
         io.to(roomNumber).emit('endCurrentRound');
     })
 
@@ -122,6 +155,15 @@ io.on('connection', (socket) => {
             roomPlayerMessages[roomNumber] = {};
         }
         roomPlayerMessages[roomNumber][message.id] = message;
+
+        roomUsersMap[roomNumber].forEach((u) => {
+            if(u.userRole === 'player' && message.fromName === u.username) {
+                u.messageStatus = 'sent';
+            }
+        });
+
+        broadcastUsersInRoom({roomNumber});
+
         io.to(roomHosts[roomNumber].id).emit('playerMessage', message);
     });
 
@@ -129,14 +171,29 @@ io.on('connection', (socket) => {
     socket.on('playerMessageApprovedByHost', ({roomNumber, message}) => {
         roomPlayerMessages[roomNumber][message.id] = message;
 
-        io.to(message.fromName).emit('playerMessageApprovedByHost', message);
+        roomUsersMap[roomNumber].forEach((u) => {
+            if(u.userRole === 'player' && message.fromName === u.username) {
+                u.messageStatus = 'approved';
+            }
+        });
+
+        broadcastUsersInRoom({roomNumber});
+
+        io.to(getUsernameChannel(message.fromName)).emit('playerMessageApprovedByHost', message);
     });
 
     // 审核不通过，通知玩家
     socket.on('playerMessageDisapprovedByHost', ({roomNumber, message}) => {
         roomPlayerMessages[roomNumber][message.id] = message;
 
-        io.to(message.fromName).emit('playerMessageDisapprovedByHost', message);
+        roomUsersMap[roomNumber].forEach((u) => {
+            if(u.userRole === 'player' && message.fromName === u.username) {
+                u.messageStatus = 'disapproved';
+            }
+        });
+        broadcastUsersInRoom({roomNumber});
+
+        io.to(getUsernameChannel(message.fromName)).emit('playerMessageDisapprovedByHost', message);
     });
 
 
@@ -171,13 +228,13 @@ function attemptToJoin({id, username, userRole, roomNumber}, socket) {
 function sendMessageToTargetPlayer(roomNumber, messagesToPublish) {
     messagesToPublish.forEach((message) => {
         const targetUser = roomUsersMap[roomNumber].find(user => user.username === message.toName);
+
         io.to(targetUser.id).emit('publishPendingMessages', [message]);
     });
 }
 
 function sendMessagesToObservers(roomNumber, messagesToPublish) {
     const observersInRoom = roomUsersMap[roomNumber].filter(user => user.userRole === 'observer');
-
     observersInRoom.forEach(user => {
         io.to(user.id).emit('publishPendingMessages', messagesToPublish);
     });
@@ -191,24 +248,42 @@ function emitAlert(message, socket, target) {
     }
 }
 
-function broadcastUsersInRoom({roomNumber}, socket) {
-
-    const usersInRoom = roomUsersMap[roomNumber];
-    console.log('usersInRoom', usersInRoom)
-
+function broadcastUsersInRoom({roomNumber}) {
     io.to(roomNumber).emit('listUserInRoom', {roomNumber, users: roomUsersMap[roomNumber]});
 }
 
 async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
-    roomUsersMap[roomNumber].push({username, userRole, roomNumber, id: socket.id});
+
+    socket.username = username;
+    socket.userRole = userRole;
+    socket.roomNumber = roomNumber;
+
+    const previousStatus = userStatusBeforeDisconnect[roomNumber][socket.username];
+
+    let user = {username, userRole, roomNumber, connected: true, messageStatus: 'notStarted', id: socket.id};
+
+    if(!!previousStatus) {
+        user.messageStatus = previousStatus.messageStatus;
+    }
+
+    let existingUser = roomUsersMap[roomNumber].find(u => u.username === username);
+
+    if(!!existingUser) {
+        existingUser.messageStatus = user.messageStatus
+        existingUser.connected = true
+    } else {
+        roomUsersMap[roomNumber].push(user);
+    }
+
+    socket.messageStatus = user.messageStatus;
 
     await socket.join(roomNumber);
-    await socket.join(username);
+    await socket.join(getUsernameChannel(username));
 
     const previousMessages = roomPlayerMessages[roomNumber];
 
     socket.emit('joinSuccess', ({
-        user: {username, userRole, roomNumber, id: socket.id},
+        user,
         roomInfo: roomInfo[roomNumber]
     }))
 
@@ -222,6 +297,10 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
 
         io.to(socket.id).emit('listPreviousMessages', {messages: messagesPlayerCanSee})
     }
+}
+
+function getUsernameChannel(username) {
+    return 'username_'+username;
 }
 
 server.listen(port, () => {
