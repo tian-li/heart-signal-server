@@ -228,7 +228,6 @@ function attemptToJoin({id, username, userRole, roomNumber}, socket) {
 function sendMessageToTargetPlayer(roomNumber, messagesToPublish) {
     messagesToPublish.forEach((message) => {
         const targetUser = roomUsersMap[roomNumber].find(user => user.username === message.toName);
-
         io.to(targetUser.id).emit('publishPendingMessages', [message]);
     });
 }
@@ -269,8 +268,9 @@ async function onJoinRoomSuccess({username, userRole, roomNumber}, socket) {
     let existingUser = roomUsersMap[roomNumber].find(u => u.username === username);
 
     if(!!existingUser) {
-        existingUser.messageStatus = user.messageStatus
-        existingUser.connected = true
+        existingUser.id = user.id;
+        existingUser.messageStatus = user.messageStatus;
+        existingUser.connected = true;
     } else {
         roomUsersMap[roomNumber].push(user);
     }
