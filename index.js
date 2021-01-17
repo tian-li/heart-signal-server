@@ -19,7 +19,7 @@ cron.schedule('0 */6 * * *', () => {
     });
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 443;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
